@@ -1,0 +1,13 @@
+port = 443
+
+[users]
+user1 = "00000000000000000000000000000000"
+
+[modes]
+classic = true
+secure = true
+tls = true
+
+tls_domain = "www.github.com"
+fast_mode = true
+prefer_ipv6 = false

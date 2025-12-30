@@ -1,0 +1,212 @@
+//! Pseudorandom
+
+use rand::{Rng, RngCore, SeedableRng};
+use rand::rngs::StdRng;
+use parking_lot::Mutex;
+use crate::crypto::AesCtr;
+use once_cell::sync::Lazy;
+
+/// Global secure random instance
+pub static SECURE_RANDOM: Lazy<SecureRandom> = Lazy::new(SecureRandom::new);
+
+/// Cryptographically secure PRNG with AES-CTR
+pub struct SecureRandom {
+    inner: Mutex<SecureRandomInner>,
+}
+
+struct SecureRandomInner {
+    rng: StdRng,
+    cipher: AesCtr,
+    buffer: Vec<u8>,
+}
+
+impl SecureRandom {
+    pub fn new() -> Self {
+        let mut rng = StdRng::from_entropy();
+        
+        let mut key = [0u8; 32];
+        rng.fill_bytes(&mut key);
+        let iv: u128 = rng.gen();
+        
+        Self {
+            inner: Mutex::new(SecureRandomInner {
+                rng,
+                cipher: AesCtr::new(&key, iv),
+                buffer: Vec::with_capacity(1024),
+            }),
+        }
+    }
+    
+    /// Generate random bytes
+    pub fn bytes(&self, len: usize) -> Vec<u8> {
+        let mut inner = self.inner.lock();
+        const CHUNK_SIZE: usize = 512;
+        
+        while inner.buffer.len() < len {
+            let mut chunk = vec![0u8; CHUNK_SIZE];
+            inner.rng.fill_bytes(&mut chunk);
+            inner.cipher.apply(&mut chunk);
+            inner.buffer.extend_from_slice(&chunk);
+        }
+        
+        inner.buffer.drain(..len).collect()
+    }
+    
+    /// Generate random number in range [0, max)
+    pub fn range(&self, max: usize) -> usize {
+        if max == 0 {
+            return 0;
+        }
+        let mut inner = self.inner.lock();
+        inner.rng.gen_range(0..max)
+    }
+    
+    /// Generate random bits
+    pub fn bits(&self, k: usize) -> u64 {
+        if k == 0 {
+            return 0;
+        }
+        
+        let bytes_needed = (k + 7) / 8;
+        let bytes = self.bytes(bytes_needed.min(8));
+        
+        let mut result = 0u64;
+        for (i, &b) in bytes.iter().enumerate() {
+            if i >= 8 {
+                break;
+            }
+            result |= (b as u64) << (i * 8);
+        }
+        
+        // Mask extra bits
+        if k < 64 {
+            result &= (1u64 << k) - 1;
+        }
+        
+        result
+    }
+    
+    /// Choose random element from slice
+    pub fn choose<'a, T>(&self, slice: &'a [T]) -> Option<&'a T> {
+        if slice.is_empty() {
+            None
+        } else {
+            Some(&slice[self.range(slice.len())])
+        }
+    }
+    
+    /// Shuffle slice in place
+    pub fn shuffle<T>(&self, slice: &mut [T]) {
+        let mut inner = self.inner.lock();
+        for i in (1..slice.len()).rev() {
+            let j = inner.rng.gen_range(0..=i);
+            slice.swap(i, j);
+        }
+    }
+    
+    /// Generate random u32
+    pub fn u32(&self) -> u32 {
+        let mut inner = self.inner.lock();
+        inner.rng.gen()
+    }
+    
+    /// Generate random u64
+    pub fn u64(&self) -> u64 {
+        let mut inner = self.inner.lock();
+        inner.rng.gen()
+    }
+}
+
+impl Default for SecureRandom {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    
+    #[test]
+    fn test_bytes_uniqueness() {
+        let rng = SecureRandom::new();
+        let a = rng.bytes(32);
+        let b = rng.bytes(32);
+        assert_ne!(a, b);
+    }
+    
+    #[test]
+    fn test_bytes_length() {
+        let rng = SecureRandom::new();
+        assert_eq!(rng.bytes(0).len(), 0);
+        assert_eq!(rng.bytes(1).len(), 1);
+        assert_eq!(rng.bytes(100).len(), 100);
+        assert_eq!(rng.bytes(1000).len(), 1000);
+    }
+    
+    #[test]
+    fn test_range() {
+        let rng = SecureRandom::new();
+        
+        for _ in 0..1000 {
+            let n = rng.range(10);
+            assert!(n < 10);
+        }
+        
+        assert_eq!(rng.range(1), 0);
+        assert_eq!(rng.range(0), 0);
+    }
+    
+    #[test]
+    fn test_bits() {
+        let rng = SecureRandom::new();
+        
+        // Single bit should be 0 or 1
+        for _ in 0..100 {
+            assert!(rng.bits(1) <= 1);
+        }
+        
+        // 8 bits should be 0-255
+        for _ in 0..100 {
+            assert!(rng.bits(8) <= 255);
+        }
+    }
+    
+    #[test]
+    fn test_choose() {
+        let rng = SecureRandom::new();
+        let items = vec![1, 2, 3, 4, 5];
+        
+        let mut seen = HashSet::new();
+        for _ in 0..1000 {
+            if let Some(&item) = rng.choose(&items) {
+                seen.insert(item);
+            }
+        }
+        
+        // Should have seen all items
+        assert_eq!(seen.len(), 5);
+        
+        // Empty slice should return None
+        let empty: Vec<i32> = vec![];
+        assert!(rng.choose(&empty).is_none());
+    }
+    
+    #[test]
+    fn test_shuffle() {
+        let rng = SecureRandom::new();
+        let original = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        
+        let mut shuffled = original.clone();
+        rng.shuffle(&mut shuffled);
+        
+        // Should contain same elements
+        let mut sorted = shuffled.clone();
+        sorted.sort();
+        assert_eq!(sorted, original);
+        
+        // Should be different order (with very high probability)
+        assert_ne!(shuffled, original);
+    }
+}
