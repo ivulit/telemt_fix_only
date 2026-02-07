@@ -1,9 +1,19 @@
 //! AES encryption implementations
 //!
 //! Provides AES-256-CTR and AES-256-CBC modes for MTProto encryption.
+//!
+//! ## Zeroize policy
+//!
+//! - `AesCbc` stores raw key/IV bytes and zeroizes them on drop.
+//! - `AesCtr` wraps an opaque `Aes256Ctr` cipher from the `ctr` crate.
+//!   The expanded key schedule lives inside that type and cannot be
+//!   zeroized from outside. Callers that hold raw key material (e.g.
+//!   `HandshakeSuccess`, `ObfuscationParams`) are responsible for
+//!   zeroizing their own copies.
 
 use aes::Aes256;
 use ctr::{Ctr128BE, cipher::{KeyIvInit, StreamCipher}};
+use zeroize::Zeroize;
 use crate::error::{ProxyError, Result};
 
 type Aes256Ctr = Ctr128BE<Aes256>;
@@ -12,7 +22,12 @@ type Aes256Ctr = Ctr128BE<Aes256>;
 
 /// AES-256-CTR encryptor/decryptor
 /// 
-/// CTR mode is symmetric - encryption and decryption are the same operation.
+/// CTR mode is symmetric — encryption and decryption are the same operation.
+///
+/// **Zeroize note:** The inner `Aes256Ctr` cipher state (expanded key schedule
+/// + counter) is opaque and cannot be zeroized. If you need to protect key
+/// material, zeroize the `[u8; 32]` key and `u128` IV at the call site
+/// before dropping them.
 pub struct AesCtr {
     cipher: Aes256Ctr,
 }
@@ -62,12 +77,21 @@ impl AesCtr {
 
 /// AES-256-CBC cipher with proper chaining
 ///
-/// Unlike CTR mode, CBC is NOT symmetric - encryption and decryption
+/// Unlike CTR mode, CBC is NOT symmetric — encryption and decryption
 /// are different operations. This implementation handles CBC chaining
 /// correctly across multiple blocks.
+///
+/// Key and IV are zeroized on drop.
 pub struct AesCbc {
     key: [u8; 32],
     iv: [u8; 16],
+}
+
+impl Drop for AesCbc {
+    fn drop(&mut self) {
+        self.key.zeroize();
+        self.iv.zeroize();
+    }
 }
 
 impl AesCbc {
@@ -141,17 +165,9 @@ impl AesCbc {
         
         for chunk in data.chunks(Self::BLOCK_SIZE) {
             let plaintext: [u8; 16] = chunk.try_into().unwrap();
-            
-            // XOR plaintext with previous ciphertext (or IV for first block)
             let xored = Self::xor_blocks(&plaintext, &prev_ciphertext);
-            
-            // Encrypt the XORed block
             let ciphertext = self.encrypt_block(&xored, &key_schedule);
-            
-            // Save for next iteration
             prev_ciphertext = ciphertext;
-            
-            // Append to result
             result.extend_from_slice(&ciphertext);
         }
         
@@ -180,17 +196,9 @@ impl AesCbc {
         
         for chunk in data.chunks(Self::BLOCK_SIZE) {
             let ciphertext: [u8; 16] = chunk.try_into().unwrap();
-            
-            // Decrypt the block
             let decrypted = self.decrypt_block(&ciphertext, &key_schedule);
-            
-            // XOR with previous ciphertext (or IV for first block)
             let plaintext = Self::xor_blocks(&decrypted, &prev_ciphertext);
-            
-            // Save current ciphertext for next iteration
             prev_ciphertext = ciphertext;
-            
-            // Append to result
             result.extend_from_slice(&plaintext);
         }
         
@@ -217,16 +225,13 @@ impl AesCbc {
         for i in (0..data.len()).step_by(Self::BLOCK_SIZE) {
             let block = &mut data[i..i + Self::BLOCK_SIZE];
             
-            // XOR with previous ciphertext
             for j in 0..Self::BLOCK_SIZE {
                 block[j] ^= prev_ciphertext[j];
             }
             
-            // Encrypt in-place
             let block_array: &mut [u8; 16] = block.try_into().unwrap();
             *block_array = self.encrypt_block(block_array, &key_schedule);
             
-            // Save for next iteration
             prev_ciphertext = *block_array;
         }
         
@@ -248,26 +253,20 @@ impl AesCbc {
         use aes::cipher::KeyInit;
         let key_schedule = aes::Aes256::new((&self.key).into());
         
-        // For in-place decryption, we need to save ciphertext blocks
-        // before we overwrite them
         let mut prev_ciphertext = self.iv;
         
         for i in (0..data.len()).step_by(Self::BLOCK_SIZE) {
             let block = &mut data[i..i + Self::BLOCK_SIZE];
             
-            // Save current ciphertext before modifying
             let current_ciphertext: [u8; 16] = block.try_into().unwrap();
             
-            // Decrypt in-place
             let block_array: &mut [u8; 16] = block.try_into().unwrap();
             *block_array = self.decrypt_block(block_array, &key_schedule);
             
-            // XOR with previous ciphertext
             for j in 0..Self::BLOCK_SIZE {
                 block[j] ^= prev_ciphertext[j];
             }
             
-            // Save for next iteration
             prev_ciphertext = current_ciphertext;
         }
         
@@ -347,10 +346,8 @@ mod tests {
         let mut cipher = AesCtr::new(&key, iv);
         cipher.apply(&mut data);
         
-        // Encrypted should be different
         assert_ne!(&data[..], original);
         
-        // Decrypt with fresh cipher
         let mut cipher = AesCtr::new(&key, iv);
         cipher.apply(&mut data);
         
@@ -364,7 +361,7 @@ mod tests {
         let key = [0u8; 32];
         let iv = [0u8; 16];
         
-        let original = [0u8; 32]; // 2 blocks
+        let original = [0u8; 32];
         
         let cipher = AesCbc::new(key, iv);
         let encrypted = cipher.encrypt(&original).unwrap();
@@ -375,31 +372,25 @@ mod tests {
     
     #[test]
     fn test_aes_cbc_chaining_works() {
-        // This is the key test - verify CBC chaining is correct
         let key = [0x42u8; 32];
         let iv = [0x00u8; 16];
         
-        // Two IDENTICAL plaintext blocks
         let plaintext = [0xAAu8; 32];
         
         let cipher = AesCbc::new(key, iv);
         let ciphertext = cipher.encrypt(&plaintext).unwrap();
         
-        // With proper CBC, identical plaintext blocks produce DIFFERENT ciphertext
         let block1 = &ciphertext[0..16];
         let block2 = &ciphertext[16..32];
         
         assert_ne!(
             block1, block2,
-            "CBC chaining broken: identical plaintext blocks produced identical ciphertext. \
-             This indicates ECB mode, not CBC!"
+            "CBC chaining broken: identical plaintext blocks produced identical ciphertext"
         );
     }
     
     #[test]
     fn test_aes_cbc_known_vector() {
-        // Test with known NIST test vector
-        // AES-256-CBC with zero key and zero IV
         let key = [0u8; 32];
         let iv = [0u8; 16];
         let plaintext = [0u8; 16];
@@ -407,11 +398,9 @@ mod tests {
         let cipher = AesCbc::new(key, iv);
         let ciphertext = cipher.encrypt(&plaintext).unwrap();
         
-        // Decrypt and verify roundtrip
         let decrypted = cipher.decrypt(&ciphertext).unwrap();
         assert_eq!(plaintext.as_slice(), decrypted.as_slice());
         
-        // Ciphertext should not be all zeros
         assert_ne!(ciphertext.as_slice(), plaintext.as_slice());
     }
     
@@ -420,7 +409,6 @@ mod tests {
         let key = [0x12u8; 32];
         let iv = [0x34u8; 16];
         
-        // 5 blocks = 80 bytes
         let plaintext: Vec<u8> = (0..80).collect();
         
         let cipher = AesCbc::new(key, iv);
@@ -435,7 +423,7 @@ mod tests {
         let key = [0x12u8; 32];
         let iv = [0x34u8; 16];
         
-        let original = [0x56u8; 48]; // 3 blocks
+        let original = [0x56u8; 48];
         let mut buffer = original;
         
         let cipher = AesCbc::new(key, iv);
@@ -462,41 +450,33 @@ mod tests {
     fn test_aes_cbc_unaligned_error() {
         let cipher = AesCbc::new([0u8; 32], [0u8; 16]);
         
-        // 15 bytes - not aligned to block size
         let result = cipher.encrypt(&[0u8; 15]);
         assert!(result.is_err());
         
-        // 17 bytes - not aligned
         let result = cipher.encrypt(&[0u8; 17]);
         assert!(result.is_err());
     }
     
     #[test]
     fn test_aes_cbc_avalanche_effect() {
-        // Changing one bit in plaintext should change entire ciphertext block
-        // and all subsequent blocks (due to chaining)
         let key = [0xAB; 32];
         let iv = [0xCD; 16];
         
-        let mut plaintext1 = [0u8; 32];
+        let plaintext1 = [0u8; 32];
         let mut plaintext2 = [0u8; 32];
-        plaintext2[0] = 0x01; // Single bit difference in first block
+        plaintext2[0] = 0x01;
         
         let cipher = AesCbc::new(key, iv);
         
         let ciphertext1 = cipher.encrypt(&plaintext1).unwrap();
         let ciphertext2 = cipher.encrypt(&plaintext2).unwrap();
         
-        // First blocks should be different
         assert_ne!(&ciphertext1[0..16], &ciphertext2[0..16]);
-        
-        // Second blocks should ALSO be different (chaining effect)
         assert_ne!(&ciphertext1[16..32], &ciphertext2[16..32]);
     }
     
     #[test]
     fn test_aes_cbc_iv_matters() {
-        // Same plaintext with different IVs should produce different ciphertext
         let key = [0x55; 32];
         let plaintext = [0x77u8; 16];
         
@@ -511,7 +491,6 @@ mod tests {
     
     #[test]
     fn test_aes_cbc_deterministic() {
-        // Same key, IV, plaintext should always produce same ciphertext
         let key = [0x99; 32];
         let iv = [0x88; 16];
         let plaintext = [0x77u8; 32];
@@ -522,6 +501,23 @@ mod tests {
         let ciphertext2 = cipher.encrypt(&plaintext).unwrap();
         
         assert_eq!(ciphertext1, ciphertext2);
+    }
+    
+    // ============= Zeroize Tests =============
+    
+    #[test]
+    fn test_aes_cbc_zeroize_on_drop() {
+        let key = [0xAA; 32];
+        let iv = [0xBB; 16];
+        
+        let cipher = AesCbc::new(key, iv);
+        // Verify key/iv are set
+        assert_eq!(cipher.key, [0xAA; 32]);
+        assert_eq!(cipher.iv, [0xBB; 16]);
+        
+        drop(cipher);
+        // After drop, key/iv are zeroized (can't observe directly,
+        // but the Drop impl runs without panic)
     }
     
     // ============= Error Handling Tests =============

@@ -1,8 +1,9 @@
-//! MTProto Handshake Magics
+//! MTProto Handshake
 
 use std::net::SocketAddr;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, warn, trace, info};
+use zeroize::Zeroize;
 
 use crate::crypto::{sha256, AesCtr, SecureRandom};
 use crate::protocol::constants::*;
@@ -13,6 +14,9 @@ use crate::stats::ReplayChecker;
 use crate::config::ProxyConfig;
 
 /// Result of successful handshake
+///
+/// Key material (`dec_key`, `dec_iv`, `enc_key`, `enc_iv`) is
+/// zeroized on drop.
 #[derive(Debug, Clone)]
 pub struct HandshakeSuccess {
     /// Authenticated user name
@@ -33,6 +37,15 @@ pub struct HandshakeSuccess {
     pub is_tls: bool,
 }
 
+impl Drop for HandshakeSuccess {
+    fn drop(&mut self) {
+        self.dec_key.zeroize();
+        self.dec_iv.zeroize();
+        self.enc_key.zeroize();
+        self.enc_iv.zeroize();
+    }
+}
+
 /// Handle fake TLS handshake
 pub async fn handle_tls_handshake<R, W>(
     handshake: &[u8],
@@ -49,30 +62,25 @@ where
 {
     debug!(peer = %peer, handshake_len = handshake.len(), "Processing TLS handshake");
     
-    // Check minimum length
     if handshake.len() < tls::TLS_DIGEST_POS + tls::TLS_DIGEST_LEN + 1 {
         debug!(peer = %peer, "TLS handshake too short");
         return HandshakeResult::BadClient { reader, writer };
     }
     
-    // Extract digest for replay check
     let digest = &handshake[tls::TLS_DIGEST_POS..tls::TLS_DIGEST_POS + tls::TLS_DIGEST_LEN];
     let digest_half = &digest[..tls::TLS_DIGEST_HALF_LEN];
     
-    // Check for replay
     if replay_checker.check_tls_digest(digest_half) {
         warn!(peer = %peer, "TLS replay attack detected (duplicate digest)");
         return HandshakeResult::BadClient { reader, writer };
     }
     
-    // Build secrets list
     let secrets: Vec<(String, Vec<u8>)> = config.access.users.iter()
         .filter_map(|(name, hex)| {
             hex::decode(hex).ok().map(|bytes| (name.clone(), bytes))
         })
         .collect();
     
-    // Validate handshake
     let validation = match tls::validate_tls_handshake(
         handshake,
         &secrets,
@@ -89,13 +97,11 @@ where
         }
     };
     
-    // Get secret for response
     let secret = match secrets.iter().find(|(name, _)| *name == validation.user) {
         Some((_, s)) => s,
         None => return HandshakeResult::BadClient { reader, writer },
     };
     
-    // Build and send response
     let response = tls::build_server_hello(
         secret,
         &validation.digest,
@@ -116,7 +122,6 @@ where
         return HandshakeResult::Error(ProxyError::Io(e));
     }
     
-    // Record for replay protection only after successful handshake
     replay_checker.add_tls_digest(digest_half);
     
     info!(
@@ -148,26 +153,21 @@ where
 {
     trace!(peer = %peer, handshake = ?hex::encode(handshake), "MTProto handshake bytes");
     
-    // Extract prekey and IV
     let dec_prekey_iv = &handshake[SKIP_LEN..SKIP_LEN + PREKEY_LEN + IV_LEN];
     
-    // Check for replay
     if replay_checker.check_handshake(dec_prekey_iv) {
         warn!(peer = %peer, "MTProto replay attack detected");
         return HandshakeResult::BadClient { reader, writer };
     }
     
-    // Reversed for encryption direction
     let enc_prekey_iv: Vec<u8> = dec_prekey_iv.iter().rev().copied().collect();
     
-    // Try each user's secret
     for (user, secret_hex) in &config.access.users {
         let secret = match hex::decode(secret_hex) {
             Ok(s) => s,
             Err(_) => continue,
         };
         
-        // Derive decryption key
         let dec_prekey = &dec_prekey_iv[..PREKEY_LEN];
         let dec_iv_bytes = &dec_prekey_iv[PREKEY_LEN..];
         
@@ -178,11 +178,9 @@ where
         
         let dec_iv = u128::from_be_bytes(dec_iv_bytes.try_into().unwrap());
         
-        // Decrypt handshake to check protocol tag
         let mut decryptor = AesCtr::new(&dec_key, dec_iv);
         let decrypted = decryptor.decrypt(handshake);
         
-        // Check protocol tag
         let tag_bytes: [u8; 4] = decrypted[PROTO_TAG_POS..PROTO_TAG_POS + 4]
             .try_into()
             .unwrap();
@@ -192,7 +190,6 @@ where
             None => continue,
         };
         
-        // Check if mode is enabled
         let mode_ok = match proto_tag {
             ProtoTag::Secure => {
                 if is_tls { config.general.modes.tls } else { config.general.modes.secure }
@@ -205,12 +202,10 @@ where
             continue;
         }
         
-        // Extract DC index
         let dc_idx = i16::from_le_bytes(
             decrypted[DC_IDX_POS..DC_IDX_POS + 2].try_into().unwrap()
         );
         
-        // Derive encryption key
         let enc_prekey = &enc_prekey_iv[..PREKEY_LEN];
         let enc_iv_bytes = &enc_prekey_iv[PREKEY_LEN..];
         
@@ -221,10 +216,8 @@ where
         
         let enc_iv = u128::from_be_bytes(enc_iv_bytes.try_into().unwrap());
         
-        // Record for replay protection
         replay_checker.add_handshake(dec_prekey_iv);
         
-        // Create new cipher instances
         let decryptor = AesCtr::new(&dec_key, dec_iv);
         let encryptor = AesCtr::new(&enc_key, enc_iv);
         
@@ -326,13 +319,11 @@ mod tests {
         let client_dec_iv = 12345u128;
         
         let rng = SecureRandom::new();
-        let (nonce, tg_enc_key, tg_enc_iv, tg_dec_key, tg_dec_iv) = 
+        let (nonce, _tg_enc_key, _tg_enc_iv, _tg_dec_key, _tg_dec_iv) = 
             generate_tg_nonce(ProtoTag::Secure, &client_dec_key, client_dec_iv, &rng, false);
         
-        // Check length
         assert_eq!(nonce.len(), HANDSHAKE_LEN);
         
-        // Check proto tag is set
         let tag_bytes: [u8; 4] = nonce[PROTO_TAG_POS..PROTO_TAG_POS + 4].try_into().unwrap();
         assert_eq!(ProtoTag::from_bytes(tag_bytes), Some(ProtoTag::Secure));
     }
@@ -349,11 +340,28 @@ mod tests {
         let encrypted = encrypt_tg_nonce(&nonce);
         
         assert_eq!(encrypted.len(), HANDSHAKE_LEN);
-        
-        // First PROTO_TAG_POS bytes should be unchanged
         assert_eq!(&encrypted[..PROTO_TAG_POS], &nonce[..PROTO_TAG_POS]);
-        
-        // Rest should be different (encrypted)
         assert_ne!(&encrypted[PROTO_TAG_POS..], &nonce[PROTO_TAG_POS..]);
+    }
+    
+    #[test]
+    fn test_handshake_success_zeroize_on_drop() {
+        let success = HandshakeSuccess {
+            user: "test".to_string(),
+            dc_idx: 2,
+            proto_tag: ProtoTag::Secure,
+            dec_key: [0xAA; 32],
+            dec_iv: 0xBBBBBBBB,
+            enc_key: [0xCC; 32],
+            enc_iv: 0xDDDDDDDD,
+            peer: "127.0.0.1:1234".parse().unwrap(),
+            is_tls: true,
+        };
+        
+        assert_eq!(success.dec_key, [0xAA; 32]);
+        assert_eq!(success.enc_key, [0xCC; 32]);
+        
+        drop(success);
+        // Drop impl zeroizes key material without panic
     }
 }

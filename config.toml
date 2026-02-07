@@ -6,8 +6,13 @@ show_link = ["hello"]
 [general]
 prefer_ipv6 = false
 fast_mode = true
-use_middle_proxy = false
-# ad_tag = "..."
+use_middle_proxy = true
+ad_tag = "00000000000000000000000000000000"
+
+# Log level: debug | verbose | normal | silent
+# Can be overridden with --silent or --log-level CLI flags
+# RUST_LOG env var takes absolute priority over all of these
+log_level = "normal"
 
 [general.modes]
 classic = false
@@ -39,14 +44,13 @@ client_ack = 300
 
 # === Anti-Censorship & Masking ===
 [censorship]
-tls_domain = "petrovich.ru"
+tls_domain = "google.ru"
 mask = true
 mask_port = 443
 # mask_host = "petrovich.ru" # Defaults to tls_domain if not set
 fake_cert_len = 2048
 
 # === Access Control & Users ===
-# username "hello" is used for example
 [access]
 replay_check_len = 65536
 replay_window_secs = 1800
@@ -63,15 +67,11 @@ hello = "00000000000000000000000000000000"
 # hello = 1073741824 # 1 GB
 
 # === Upstreams & Routing ===
-# By default, direct connection is used, but you can add SOCKS proxy
-
-# Direct - Default
 [[upstreams]]
 type = "direct"
 enabled = true
 weight = 10
 
-# SOCKS5
 # [[upstreams]]
 # type = "socks5"
 # address = "127.0.0.1:9050"

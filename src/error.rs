@@ -118,16 +118,13 @@ pub trait Recoverable {
 impl Recoverable for StreamError {
     fn is_recoverable(&self) -> bool {
         match self {
-            // Partial operations can be retried
             Self::PartialRead { .. } | Self::PartialWrite { .. } => true,
-            // I/O errors depend on kind
             Self::Io(e) => matches!(
                 e.kind(),
                 std::io::ErrorKind::WouldBlock 
                 | std::io::ErrorKind::Interrupted
                 | std::io::ErrorKind::TimedOut
             ),
-            // These are not recoverable
             Self::Poisoned { .. } 
             | Self::BufferOverflow { .. }
             | Self::InvalidFrame { .. }
@@ -137,13 +134,9 @@ impl Recoverable for StreamError {
     
     fn can_continue(&self) -> bool {
         match self {
-            // Poisoned stream cannot be used
             Self::Poisoned { .. } => false,
-            // EOF means stream is done
             Self::UnexpectedEof => false,
-            // Buffer overflow is fatal
             Self::BufferOverflow { .. } => false,
-            // Others might allow continuation
             _ => true,
         }
     }
@@ -383,18 +376,18 @@ mod tests {
     
     #[test]
     fn test_handshake_result() {
-        let success: HandshakeResult<i32> = HandshakeResult::Success(42);
+        let success: HandshakeResult<i32, (), ()> = HandshakeResult::Success(42);
         assert!(success.is_success());
         assert!(!success.is_bad_client());
         
-        let bad: HandshakeResult<i32> = HandshakeResult::BadClient;
+        let bad: HandshakeResult<i32, (), ()> = HandshakeResult::BadClient { reader: (), writer: () };
         assert!(!bad.is_success());
         assert!(bad.is_bad_client());
     }
     
     #[test]
     fn test_handshake_result_map() {
-        let success: HandshakeResult<i32> = HandshakeResult::Success(42);
+        let success: HandshakeResult<i32, (), ()> = HandshakeResult::Success(42);
         let mapped = success.map(|x| x * 2);
         
         match mapped {

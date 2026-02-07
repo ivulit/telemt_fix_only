@@ -32,7 +32,7 @@ impl UpstreamManager {
             .filter(|c| c.enabled)
             .map(|c| UpstreamState {
                 config: c,
-                healthy: true, // Optimistic start
+                healthy: true,
                 fails: 0,
                 last_check: std::time::Instant::now(),
             })
@@ -58,7 +58,7 @@ impl UpstreamManager {
             
         if healthy_indices.is_empty() {
             // If all unhealthy, try any random one
-            return Some(rand::thread_rng().gen_range(0..upstreams.len()));
+            return Some(rand::rng().gen_range(0..upstreams.len()));
         }
         
         // Weighted selection
@@ -67,10 +67,10 @@ impl UpstreamManager {
             .sum();
             
         if total_weight == 0 {
-            return Some(healthy_indices[rand::thread_rng().gen_range(0..healthy_indices.len())]);
+            return Some(healthy_indices[rand::rng().gen_range(0..healthy_indices.len())]);
         }
         
-        let mut choice = rand::thread_rng().gen_range(0..total_weight);
+        let mut choice = rand::rng().gen_range(0..total_weight);
         
         for &idx in &healthy_indices {
             let weight = upstreams[idx].config.weight as u32;
@@ -94,7 +94,6 @@ impl UpstreamManager {
         
         match self.connect_via_upstream(&upstream, target).await {
             Ok(stream) => {
-                // Mark success
                 let mut guard = self.upstreams.write().await;
                 if let Some(u) = guard.get_mut(idx) {
                     if !u.healthy {
@@ -106,7 +105,6 @@ impl UpstreamManager {
                 Ok(stream)
             },
             Err(e) => {
-                // Mark failure
                 let mut guard = self.upstreams.write().await;
                 if let Some(u) = guard.get_mut(idx) {
                     u.fails += 1;
@@ -129,18 +127,16 @@ impl UpstreamManager {
                 
                 let socket = create_outgoing_socket_bound(target, bind_ip)?;
                 
-                // Non-blocking connect logic
                 socket.set_nonblocking(true)?;
                 match socket.connect(&target.into()) {
                     Ok(()) => {},
-                    Err(err) if err.raw_os_error() == Some(115) || err.kind() == std::io::ErrorKind::WouldBlock => {},
+                    Err(err) if err.raw_os_error() == Some(libc::EINPROGRESS) || err.kind() == std::io::ErrorKind::WouldBlock => {},
                     Err(err) => return Err(ProxyError::Io(err)),
                 }
                 
                 let std_stream: std::net::TcpStream = socket.into();
                 let stream = TcpStream::from_std(std_stream)?;
                 
-                // Wait for connection to complete
                 stream.writable().await?;
                 if let Some(e) = stream.take_error()? {
                     return Err(ProxyError::Io(e));
@@ -159,18 +155,16 @@ impl UpstreamManager {
                 
                 let socket = create_outgoing_socket_bound(proxy_addr, bind_ip)?;
                 
-                // Non-blocking connect logic
                 socket.set_nonblocking(true)?;
                 match socket.connect(&proxy_addr.into()) {
                     Ok(()) => {},
-                    Err(err) if err.raw_os_error() == Some(115) || err.kind() == std::io::ErrorKind::WouldBlock => {},
+                    Err(err) if err.raw_os_error() == Some(libc::EINPROGRESS) || err.kind() == std::io::ErrorKind::WouldBlock => {},
                     Err(err) => return Err(ProxyError::Io(err)),
                 }
                 
                 let std_stream: std::net::TcpStream = socket.into();
                 let mut stream = TcpStream::from_std(std_stream)?;
                 
-                // Wait for connection to complete
                 stream.writable().await?;
                 if let Some(e) = stream.take_error()? {
                     return Err(ProxyError::Io(e));
@@ -190,18 +184,16 @@ impl UpstreamManager {
                 
                 let socket = create_outgoing_socket_bound(proxy_addr, bind_ip)?;
                 
-                // Non-blocking connect logic
                 socket.set_nonblocking(true)?;
                 match socket.connect(&proxy_addr.into()) {
                     Ok(()) => {},
-                    Err(err) if err.raw_os_error() == Some(115) || err.kind() == std::io::ErrorKind::WouldBlock => {},
+                    Err(err) if err.raw_os_error() == Some(libc::EINPROGRESS) || err.kind() == std::io::ErrorKind::WouldBlock => {},
                     Err(err) => return Err(ProxyError::Io(err)),
                 }
                 
                 let std_stream: std::net::TcpStream = socket.into();
                 let mut stream = TcpStream::from_std(std_stream)?;
                 
-                // Wait for connection to complete
                 stream.writable().await?;
                 if let Some(e) = stream.take_error()? {
                     return Err(ProxyError::Io(e));
@@ -215,7 +207,6 @@ impl UpstreamManager {
     
     /// Background task to check health
     pub async fn run_health_checks(&self) {
-        // Simple TCP connect check to a known stable DC (e.g. 149.154.167.50:443 - DC2)
         let check_target: SocketAddr = "149.154.167.50:443".parse().unwrap();
         
         loop {
@@ -246,7 +237,6 @@ impl UpstreamManager {
                     }
                     Ok(Err(e)) => {
                         debug!("Health check failed for {:?}: {}", u.config, e);
-                        // Don't mark unhealthy immediately in background check
                     }
                     Err(_) => {
                         debug!("Health check timeout for {:?}", u.config);

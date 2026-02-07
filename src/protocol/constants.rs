@@ -1,13 +1,13 @@
 //! Protocol constants and datacenter addresses
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 // ============= Telegram Datacenters =============
 
 pub const TG_DATACENTER_PORT: u16 = 443;
 
-pub static TG_DATACENTERS_V4: Lazy<Vec<IpAddr>> = Lazy::new(|| {
+pub static TG_DATACENTERS_V4: LazyLock<Vec<IpAddr>> = LazyLock::new(|| {
     vec![
         IpAddr::V4(Ipv4Addr::new(149, 154, 175, 50)),
         IpAddr::V4(Ipv4Addr::new(149, 154, 167, 51)),
@@ -17,7 +17,7 @@ pub static TG_DATACENTERS_V4: Lazy<Vec<IpAddr>> = Lazy::new(|| {
     ]
 });
 
-pub static TG_DATACENTERS_V6: Lazy<Vec<IpAddr>> = Lazy::new(|| {
+pub static TG_DATACENTERS_V6: LazyLock<Vec<IpAddr>> = LazyLock::new(|| {
     vec![
         IpAddr::V6("2001:b28:f23d:f001::a".parse().unwrap()),
         IpAddr::V6("2001:67c:04e8:f002::a".parse().unwrap()),
@@ -29,8 +29,8 @@ pub static TG_DATACENTERS_V6: Lazy<Vec<IpAddr>> = Lazy::new(|| {
 
 // ============= Middle Proxies (for advertising) =============
 
-pub static TG_MIDDLE_PROXIES_V4: Lazy<std::collections::HashMap<i32, Vec<(IpAddr, u16)>>> = 
-    Lazy::new(|| {
+pub static TG_MIDDLE_PROXIES_V4: LazyLock<std::collections::HashMap<i32, Vec<(IpAddr, u16)>>> = 
+    LazyLock::new(|| {
         let mut m = std::collections::HashMap::new();
         m.insert(1, vec![(IpAddr::V4(Ipv4Addr::new(149, 154, 175, 50)), 8888)]);
         m.insert(-1, vec![(IpAddr::V4(Ipv4Addr::new(149, 154, 175, 50)), 8888)]);
@@ -45,8 +45,8 @@ pub static TG_MIDDLE_PROXIES_V4: Lazy<std::collections::HashMap<i32, Vec<(IpAddr
         m
     });
 
-pub static TG_MIDDLE_PROXIES_V6: Lazy<std::collections::HashMap<i32, Vec<(IpAddr, u16)>>> = 
-    Lazy::new(|| {
+pub static TG_MIDDLE_PROXIES_V6: LazyLock<std::collections::HashMap<i32, Vec<(IpAddr, u16)>>> = 
+    LazyLock::new(|| {
         let mut m = std::collections::HashMap::new();
         m.insert(1, vec![(IpAddr::V6("2001:b28:f23d:f001::d".parse().unwrap()), 8888)]);
         m.insert(-1, vec![(IpAddr::V6("2001:b28:f23d:f001::d".parse().unwrap()), 8888)]);
@@ -167,8 +167,6 @@ pub const DEFAULT_ACK_TIMEOUT_SECS: u64 = 300;
 // ============= Buffer Sizes =============
 
 /// Default buffer size
-/// CHANGED: Reduced from 64KB to 16KB to match TLS record size and align with
-/// the new buffering strategy for better iOS upload performance.
 pub const DEFAULT_BUFFER_SIZE: usize = 16384;
 
 /// Small buffer size for bad client handling

@@ -29,6 +29,58 @@ fn default_metrics_whitelist() -> Vec<IpAddr> {
     ]
 }
 
+// ============= Log Level =============
+
+/// Logging verbosity level
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    /// All messages including trace (trace + debug + info + warn + error)
+    Debug,
+    /// Detailed operational logs (debug + info + warn + error)
+    Verbose,
+    /// Standard operational logs (info + warn + error)
+    #[default]
+    Normal,
+    /// Minimal output: only warnings and errors (warn + error).
+    /// Proxy links are still printed to stdout via println!.
+    Silent,
+}
+
+impl LogLevel {
+    /// Convert to tracing EnvFilter directive string
+    pub fn to_filter_str(&self) -> &'static str {
+        match self {
+            LogLevel::Debug => "trace",
+            LogLevel::Verbose => "debug",
+            LogLevel::Normal => "info",
+            LogLevel::Silent => "warn",
+        }
+    }
+    
+    /// Parse from a loose string (CLI argument)
+    pub fn from_str_loose(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "debug" | "trace" => LogLevel::Debug,
+            "verbose" => LogLevel::Verbose,
+            "normal" | "info" => LogLevel::Normal,
+            "silent" | "quiet" | "error" | "warn" => LogLevel::Silent,
+            _ => LogLevel::Normal,
+        }
+    }
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogLevel::Debug => write!(f, "debug"),
+            LogLevel::Verbose => write!(f, "verbose"),
+            LogLevel::Normal => write!(f, "normal"),
+            LogLevel::Silent => write!(f, "silent"),
+        }
+    }
+}
+
 // ============= Sub-Configs =============
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +115,9 @@ pub struct GeneralConfig {
 
     #[serde(default)]
     pub ad_tag: Option<String>,
+    
+    #[serde(default)]
+    pub log_level: LogLevel,
 }
 
 impl Default for GeneralConfig {
@@ -73,6 +128,7 @@ impl Default for GeneralConfig {
             fast_mode: true,
             use_middle_proxy: false,
             ad_tag: None,
+            log_level: LogLevel::Normal,
         }
     }
 }
@@ -304,20 +360,14 @@ impl ProxyConfig {
             return Err(ProxyError::Config("tls_domain cannot be empty".to_string()));
         }
         
-        // Warn if using default tls_domain
-        if config.censorship.tls_domain == "www.google.com" {
-            tracing::warn!("Using default tls_domain (www.google.com). Consider setting a custom domain in config.toml");
-        }
-        
         // Default mask_host to tls_domain if not set
         if config.censorship.mask_host.is_none() {
-            tracing::info!("mask_host not set, using tls_domain ({}) for masking", config.censorship.tls_domain);
             config.censorship.mask_host = Some(config.censorship.tls_domain.clone());
         }
         
         // Random fake_cert_len
         use rand::Rng;
-        config.censorship.fake_cert_len = rand::thread_rng().gen_range(1024..4096);
+        config.censorship.fake_cert_len = rand::rng().gen_range(1024..4096);
         
         // Migration: Populate listeners if empty
         if config.server.listeners.is_empty() {
@@ -358,7 +408,6 @@ impl ProxyConfig {
             return Err(ProxyError::Config("No modes enabled".to_string()));
         }
         
-        // Validate tls_domain format (basic check)
         if self.censorship.tls_domain.contains(' ') || self.censorship.tls_domain.contains('/') {
             return Err(ProxyError::Config(
                 format!("Invalid tls_domain: '{}'. Must be a valid domain name", self.censorship.tls_domain)

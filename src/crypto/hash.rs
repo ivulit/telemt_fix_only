@@ -1,3 +1,16 @@
+//! Cryptographic hash functions
+//!
+//! ## Protocol-required algorithms
+//!
+//! This module exposes MD5 and SHA-1 alongside SHA-256. These weaker
+//! hash functions are **required by the Telegram Middle Proxy protocol**
+//! (`derive_middleproxy_keys`) and cannot be replaced without breaking
+//! compatibility. They are NOT used for any security-sensitive purpose
+//! outside of that specific key derivation scheme mandated by Telegram.
+//!
+//! Static analysis tools (CodeQL, cargo-audit) may flag them — the
+//! usages are intentional and protocol-mandated.
+
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use md5::Md5;
@@ -21,14 +34,16 @@ pub fn sha256_hmac(key: &[u8], data: &[u8]) -> [u8; 32] {
     mac.finalize().into_bytes().into()
 }
 
-/// SHA-1
+/// SHA-1 — **protocol-required** by Telegram Middle Proxy key derivation.
+/// Not used for general-purpose hashing.
 pub fn sha1(data: &[u8]) -> [u8; 20] {
     let mut hasher = Sha1::new();
     hasher.update(data);
     hasher.finalize().into()
 }
 
-/// MD5
+/// MD5 — **protocol-required** by Telegram Middle Proxy key derivation.
+/// Not used for general-purpose hashing.
 pub fn md5(data: &[u8]) -> [u8; 16] {
     let mut hasher = Md5::new();
     hasher.update(data);
@@ -40,7 +55,11 @@ pub fn crc32(data: &[u8]) -> u32 {
     crc32fast::hash(data)
 }
 
-/// Middle Proxy Keygen
+/// Middle Proxy key derivation
+///
+/// Uses MD5 + SHA-1 as mandated by the Telegram Middle Proxy protocol.
+/// These algorithms are NOT replaceable here — changing them would break
+/// interoperability with Telegram's middle proxy infrastructure.
 pub fn derive_middleproxy_keys(
     nonce_srv: &[u8; 16],
     nonce_clt: &[u8; 16],
