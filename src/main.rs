@@ -15,6 +15,7 @@ mod cli;
 mod config;
 mod crypto;
 mod error;
+mod ip_tracker;
 mod protocol;
 mod proxy;
 mod stats;
@@ -27,6 +28,8 @@ use crate::proxy::{ClientHandler, handle_client_stream};
 #[cfg(unix)]
 use crate::transport::{create_unix_listener, cleanup_unix_socket};
 use crate::crypto::SecureRandom;
+use crate::ip_tracker::UserIpTracker;
+use crate::proxy::ClientHandler;
 use crate::stats::{ReplayChecker, Stats};
 use crate::stream::BufferPool;
 use crate::transport::middle_proxy::MePool;
@@ -214,6 +217,14 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let upstream_manager = Arc::new(UpstreamManager::new(config.upstreams.clone()));
     let buffer_pool = Arc::new(BufferPool::with_config(16 * 1024, 4096));
+
+    // IP Tracker initialization
+    let ip_tracker = Arc::new(UserIpTracker::new());
+    ip_tracker.load_limits(&config.access.user_max_unique_ips).await;
+    
+    if !config.access.user_max_unique_ips.is_empty() {
+        info!("IP limits configured for {} users", config.access.user_max_unique_ips.len());
+    }
 
     // Connection concurrency limit
     let _max_connections = Arc::new(Semaphore::new(10_000));
@@ -568,6 +579,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let buffer_pool = buffer_pool.clone();
         let rng = rng.clone();
         let me_pool = me_pool.clone();
+        let ip_tracker = ip_tracker.clone();
 
         tokio::spawn(async move {
             loop {
@@ -580,6 +592,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         let buffer_pool = buffer_pool.clone();
                         let rng = rng.clone();
                         let me_pool = me_pool.clone();
+                        let ip_tracker = ip_tracker.clone();
 
                         tokio::spawn(async move {
                             if let Err(e) = ClientHandler::new(
@@ -592,6 +605,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                                 buffer_pool,
                                 rng,
                                 me_pool,
+                                ip_tracker,
                             )
                             .run()
                             .await
