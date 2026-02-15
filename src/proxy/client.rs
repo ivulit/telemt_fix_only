@@ -105,9 +105,18 @@ where
             };
 
             RunningClientHandler::handle_authenticated_static(
-                crypto_reader, crypto_writer, success,
-                upstream_manager, stats, config, buffer_pool, rng, me_pool,
+                crypto_reader,
+                crypto_writer,
+                success,
+                upstream_manager,
+                stats,
+                config,
+                buffer_pool,
+                rng,
+                me_pool,
                 local_addr,
+                peer,
+                ip_tracker.clone(),
             ).await
         } else {
             if !config.general.modes.classic && !config.general.modes.secure {
@@ -138,9 +147,18 @@ where
             };
 
             RunningClientHandler::handle_authenticated_static(
-                crypto_reader, crypto_writer, success,
-                upstream_manager, stats, config, buffer_pool, rng, me_pool,
+                crypto_reader,
+                crypto_writer,
+                success,
+                upstream_manager,
+                stats,
+                config,
+                buffer_pool,
+                rng,
+                me_pool,
                 local_addr,
+                peer,
+                ip_tracker.clone(),
             ).await
         }
     }).await;
@@ -211,6 +229,7 @@ impl RunningClientHandler {
         self.stats.increment_connects_all();
 
         let peer = self.peer;
+        let ip_tracker = self.ip_tracker.clone();
         debug!(peer = %peer, "New connection");
 
         if let Err(e) = configure_client_socket(
@@ -249,6 +268,7 @@ impl RunningClientHandler {
 
         let is_tls = tls::is_tls_handshake(&first_bytes[..3]);
         let peer = self.peer;
+        let ip_tracker = self.ip_tracker.clone();
 
         debug!(peer = %peer, is_tls = is_tls, "Handshake type detected");
 
@@ -261,6 +281,7 @@ impl RunningClientHandler {
 
     async fn handle_tls_client(mut self, first_bytes: [u8; 5]) -> Result<()> {
         let peer = self.peer;
+        let ip_tracker = self.ip_tracker.clone();
 
         let tls_len = u16::from_be_bytes([first_bytes[3], first_bytes[4]]) as usize;
 
@@ -354,6 +375,7 @@ impl RunningClientHandler {
 
     async fn handle_direct_client(mut self, first_bytes: [u8; 5]) -> Result<()> {
         let peer = self.peer;
+        let ip_tracker = self.ip_tracker.clone();
 
         if !self.config.general.modes.classic && !self.config.general.modes.secure {
             debug!(peer = %peer, "Non-TLS modes disabled");
