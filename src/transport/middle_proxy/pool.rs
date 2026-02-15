@@ -234,7 +234,10 @@ impl MePool {
 
         let (srv_ip_opt, clt_ip_opt, clt_v6_opt, srv_v6_opt, hs_our_ip, hs_peer_ip) =
             match (server_ip, client_ip) {
-                (IpMaterial::V4(srv), IpMaterial::V4(clt)) => {
+                // IPv4: reverse byte order for KDF (Python/C reference behavior)
+                (IpMaterial::V4(mut srv), IpMaterial::V4(mut clt)) => {
+                    srv.reverse();
+                    clt.reverse();
                     (Some(srv), Some(clt), None, None, clt, srv)
                 }
                 (IpMaterial::V6(srv), IpMaterial::V6(clt)) => {
