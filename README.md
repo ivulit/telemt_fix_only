@@ -231,7 +231,9 @@ listen_addr_ipv6 = "::"
 # Listen on multiple interfaces/IPs (overrides listen_addr_*)
 [[server.listeners]]
 ip = "0.0.0.0"
-# announce_ip = "1.2.3.4" # Optional: Public IP for tg:// links
+# announce = "my.hostname.tld" # Optional: hostname for tg:// links
+# OR
+# announce = "1.2.3.4" # Optional: Public IP for tg:// links
 
 [[server.listeners]]
 ip = "::"
