@@ -16,6 +16,7 @@ mod config;
 mod crypto;
 mod error;
 mod ip_tracker;
+mod metrics;
 mod protocol;
 mod proxy;
 mod stats;
@@ -706,6 +707,14 @@ match crate::transport::middle_proxy::fetch_proxy_secret(proxy_secret_path).awai
     filter_handle
         .reload(runtime_filter)
         .expect("Failed to switch log filter");
+
+    if let Some(port) = config.server.metrics_port {
+        let stats = stats.clone();
+        let whitelist = config.server.metrics_whitelist.clone();
+        tokio::spawn(async move {
+            metrics::serve(port, stats, whitelist).await;
+        });
+    }
 
     for listener in listeners {
         let config = config.clone();
