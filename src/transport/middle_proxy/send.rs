@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use tokio::sync::Mutex;
 use tracing::{debug, warn};
@@ -38,6 +39,7 @@ impl MePool {
             our_addr,
             proto_flags,
         };
+        let mut emergency_attempts = 0;
 
         loop {
             if let Some(current) = self.registry.get_writer(conn_id).await {
@@ -71,6 +73,10 @@ impl MePool {
             let mut candidate_indices = self.candidate_indices_for_dc(&writers_snapshot, target_dc).await;
             if candidate_indices.is_empty() {
                 // Emergency connect-on-demand
+                if emergency_attempts >= 3 {
+                    return Err(ProxyError::Proxy("No ME writers available for target DC".into()));
+                }
+                emergency_attempts += 1;
                 let map = self.proxy_map_v4.read().await;
                 if let Some(addrs) = map.get(&(target_dc as i32)) {
                     let mut shuffled = addrs.clone();
@@ -82,6 +88,7 @@ impl MePool {
                             break;
                         }
                     }
+                    tokio::time::sleep(Duration::from_millis(100 * emergency_attempts)).await;
                     let ws2 = self.writers.read().await;
                     writers_snapshot = ws2.clone();
                     drop(ws2);

@@ -29,7 +29,7 @@ pub struct ConnWriter {
 }
 
 pub struct ConnRegistry {
-    map: RwLock<HashMap<u64, mpsc::UnboundedSender<MeResponse>>>,
+    map: RwLock<HashMap<u64, mpsc::Sender<MeResponse>>>,
     writers: RwLock<HashMap<u64, Arc<Mutex<RpcWriter>>>>,
     writer_for_conn: RwLock<HashMap<u64, u64>>,
     conns_for_writer: RwLock<HashMap<u64, Vec<u64>>>,
@@ -50,9 +50,9 @@ impl ConnRegistry {
         }
     }
 
-    pub async fn register(&self) -> (u64, mpsc::UnboundedReceiver<MeResponse>) {
+    pub async fn register(&self) -> (u64, mpsc::Receiver<MeResponse>) {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(1024);
         self.map.write().await.insert(id, tx);
         (id, rx)
     }
@@ -70,7 +70,7 @@ impl ConnRegistry {
     pub async fn route(&self, id: u64, resp: MeResponse) -> bool {
         let m = self.map.read().await;
         if let Some(tx) = m.get(&id) {
-            tx.send(resp).is_ok()
+            tx.try_send(resp).is_ok()
         } else {
             false
         }

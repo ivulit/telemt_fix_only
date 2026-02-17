@@ -32,6 +32,7 @@ pub(crate) async fn reader_loop(
     cancel: CancellationToken,
 ) -> Result<()> {
     let mut raw = enc_leftover;
+    let mut expected_seq: i32 = 0;
 
     loop {
         let mut tmp = [0u8; 16_384];
@@ -80,6 +81,14 @@ pub(crate) async fn reader_loop(
             if crc32(&frame[..pe]) != ec {
                 warn!("CRC mismatch in data frame");
                 continue;
+            }
+
+            let seq_no = i32::from_le_bytes(frame[4..8].try_into().unwrap());
+            if seq_no != expected_seq {
+                warn!(seq_no, expected = expected_seq, "ME RPC seq mismatch");
+                expected_seq = seq_no.wrapping_add(1);
+            } else {
+                expected_seq = expected_seq.wrapping_add(1);
             }
 
             let payload = &frame[8..pe];

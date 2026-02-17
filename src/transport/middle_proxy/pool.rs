@@ -48,6 +48,7 @@ pub struct MePool {
     pub(super) next_writer_id: AtomicU64,
     pub(super) ping_tracker: Arc<Mutex<HashMap<i64, (std::time::Instant, u64)>>>,
     pub(super) rtt_stats: Arc<Mutex<HashMap<u64, (f64, f64)>>>,
+    pub(super) nat_reflection_cache: Arc<Mutex<Option<(std::time::Instant, std::net::SocketAddr)>>>,
     pool_size: usize,
 }
 
@@ -79,6 +80,7 @@ impl MePool {
             next_writer_id: AtomicU64::new(1),
             ping_tracker: Arc::new(Mutex::new(HashMap::new())),
             rtt_stats: Arc::new(Mutex::new(HashMap::new())),
+            nat_reflection_cache: Arc::new(Mutex::new(None)),
         })
     }
 
