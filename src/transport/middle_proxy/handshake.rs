@@ -148,7 +148,7 @@ impl MePool {
         let nonce_payload = build_nonce_payload(ks, crypto_ts, &my_nonce);
         let nonce_frame = build_rpc_frame(-2, &nonce_payload);
         let dump = hex_dump(&nonce_frame[..nonce_frame.len().min(44)]);
-        info!(
+        debug!(
             key_selector = format_args!("0x{ks:08x}"),
             crypto_ts,
             frame_len = nonce_frame.len(),
