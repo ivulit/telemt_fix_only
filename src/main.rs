@@ -333,6 +333,7 @@ match crate::transport::middle_proxy::fetch_proxy_secret(proxy_secret_path).awai
                     cfg_v4.default_dc.or(cfg_v6.default_dc),
                     decision.clone(),
                     rng.clone(),
+                    stats.clone(),
                     config.general.me_keepalive_enabled,
                     config.general.me_keepalive_interval_secs,
                     config.general.me_keepalive_jitter_secs,

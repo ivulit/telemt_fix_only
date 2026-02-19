@@ -99,6 +99,7 @@ async fn check_family(
             match res {
                 Ok(Ok(())) => {
                     info!(%addr, dc = %dc, ?family, "ME reconnected for DC coverage");
+                    pool.stats.increment_me_reconnect_success();
                     backoff.insert(key, pool.me_reconnect_backoff_base.as_millis() as u64);
                     let jitter = pool.me_reconnect_backoff_base.as_millis() as u64 / JITTER_FRAC_NUM;
                     let wait = pool.me_reconnect_backoff_base
@@ -107,11 +108,15 @@ async fn check_family(
                     success = true;
                     break;
                 }
-                Ok(Err(e)) => debug!(%addr, dc = %dc, error = %e, ?family, "ME reconnect failed"),
+                Ok(Err(e)) => {
+                    pool.stats.increment_me_reconnect_attempt();
+                    debug!(%addr, dc = %dc, error = %e, ?family, "ME reconnect failed")
+                }
                 Err(_) => debug!(%addr, dc = %dc, ?family, "ME reconnect timed out"),
             }
         }
         if !success {
+            pool.stats.increment_me_reconnect_attempt();
             let curr = *backoff.get(&key).unwrap_or(&(pool.me_reconnect_backoff_base.as_millis() as u64));
             let next_ms = (curr.saturating_mul(2)).min(pool.me_reconnect_backoff_cap.as_millis() as u64);
             backoff.insert(key, next_ms);

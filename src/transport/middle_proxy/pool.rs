@@ -74,6 +74,7 @@ pub struct MePool {
     pub(super) nat_reflection_cache: Arc<Mutex<NatReflectionCache>>,
     pub(super) writer_available: Arc<Notify>,
     pub(super) conn_count: AtomicUsize,
+    pub(super) stats: Arc<crate::stats::Stats>,
     pool_size: usize,
 }
 
@@ -99,6 +100,7 @@ impl MePool {
         default_dc: Option<i32>,
         decision: NetworkDecision,
         rng: Arc<SecureRandom>,
+        stats: Arc<crate::stats::Stats>,
         me_keepalive_enabled: bool,
         me_keepalive_interval_secs: u64,
         me_keepalive_jitter_secs: u64,
@@ -130,6 +132,7 @@ impl MePool {
             stun_backoff_until: Arc::new(RwLock::new(None)),
             me_one_retry,
             me_one_timeout: Duration::from_millis(me_one_timeout_ms),
+            stats,
             me_keepalive_enabled,
             me_keepalive_interval: Duration::from_secs(me_keepalive_interval_secs),
             me_keepalive_jitter: Duration::from_secs(me_keepalive_jitter_secs),
@@ -440,7 +443,15 @@ impl MePool {
                                 if keepalive_random {
                                     rand::rng().fill(&mut payload);
                                 }
-                                if rpc_writer.send_keepalive(payload).await.is_err() { break; }
+                                match rpc_writer.send_keepalive(payload).await {
+                                    Ok(()) => {
+                                        stats.increment_me_keepalive_sent();
+                                    }
+                                    Err(_) => {
+                                        stats.increment_me_keepalive_failed();
+                                        break;
+                                    }
+                                }
                             }
                             Some(WriterCommand::Close) | None => break,
                         }
