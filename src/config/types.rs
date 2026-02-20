@@ -172,6 +172,15 @@ pub struct GeneralConfig {
     #[serde(default = "default_true")]
     pub me_keepalive_payload_random: bool,
 
+    /// Max pending ciphertext buffer per client writer (bytes).
+    /// Controls FakeTLS backpressure vs throughput.
+    #[serde(default = "default_crypto_pending_buffer")]
+    pub crypto_pending_buffer: usize,
+
+    /// Maximum allowed client MTProto frame size (bytes).
+    #[serde(default = "default_max_client_frame")]
+    pub max_client_frame: usize,
+
     /// Enable staggered warmup of extra ME writers.
     #[serde(default = "default_true")]
     pub me_warmup_stagger_enabled: bool,
@@ -251,6 +260,8 @@ impl Default for GeneralConfig {
             log_level: LogLevel::Normal,
             disable_colors: false,
             links: LinksConfig::default(),
+            crypto_pending_buffer: default_crypto_pending_buffer(),
+            max_client_frame: default_max_client_frame(),
         }
     }
 }

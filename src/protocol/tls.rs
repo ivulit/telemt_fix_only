@@ -376,13 +376,9 @@ pub fn build_server_hello(
     app_data_record.push(TLS_RECORD_APPLICATION);
     app_data_record.extend_from_slice(&TLS_VERSION);
     app_data_record.extend_from_slice(&(fake_cert_len as u16).to_be_bytes());
-    if fake_cert_len > 17 {
-        app_data_record.extend_from_slice(&fake_cert[..fake_cert_len - 17]);
-        app_data_record.push(0x16); // inner content type marker
-        app_data_record.extend_from_slice(&rng.bytes(16)); // AEAD-like tag mimic
-    } else {
-        app_data_record.extend_from_slice(&fake_cert);
-    }
+    // Fill ApplicationData with fully random bytes of desired length to avoid
+    // deterministic DPI fingerprints (fixed inner content type markers).
+    app_data_record.extend_from_slice(&fake_cert);
     
     // Combine all records
     let mut response = Vec::with_capacity(

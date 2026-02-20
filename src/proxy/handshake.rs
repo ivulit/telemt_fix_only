@@ -264,9 +264,10 @@ where
             "MTProto handshake successful"
         );
 
+        let max_pending = config.general.crypto_pending_buffer;
         return HandshakeResult::Success((
             CryptoReader::new(reader, decryptor),
-            CryptoWriter::new(writer, encryptor),
+            CryptoWriter::new(writer, encryptor, max_pending),
             success,
         ));
     }

@@ -110,6 +110,14 @@ pub(crate) fn default_reconnect_backoff_cap_ms() -> u64 {
     30_000
 }
 
+pub(crate) fn default_crypto_pending_buffer() -> usize {
+    256 * 1024
+}
+
+pub(crate) fn default_max_client_frame() -> usize {
+    16 * 1024 * 1024
+}
+
 // Custom deserializer helpers
 
 #[derive(Deserialize)]
