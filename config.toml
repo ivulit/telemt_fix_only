@@ -71,6 +71,7 @@ listen_addr_ipv4 = "0.0.0.0"
 listen_addr_ipv6 = "::"
 # listen_unix_sock = "/var/run/telemt.sock" # Unix socket
 # listen_unix_sock_perm = "0666" # Socket file permissions
+# proxy_protocol = false           # Enable if behind HAProxy/nginx with PROXY protocol
 # metrics_port = 9090
 # metrics_whitelist = ["127.0.0.1", "::1"]
 
@@ -95,11 +96,14 @@ me_one_timeout_ms = 1200
 # === Anti-Censorship & Masking ===
 [censorship]
 tls_domain = "petrovich.ru"
+# tls_domains = ["example.com", "cdn.example.net"] # Additional domains for EE links
 mask = true
 mask_port = 443
 # mask_host = "petrovich.ru" # Defaults to tls_domain if not set
 # mask_unix_sock = "/var/run/nginx.sock" # Unix socket (mutually exclusive with mask_host)
 fake_cert_len = 2048
+# tls_emulation = false        # Fetch real cert lengths and emulate TLS records
+# tls_front_dir = "tlsfront"   # Cache directory for TLS emulation
 
 # === Access Control & Users ===
 [access]
@@ -125,6 +129,8 @@ hello = "00000000000000000000000000000000"
 type = "direct"
 enabled = true
 weight = 10
+# interface = "192.168.1.100"           # Bind outgoing to specific IP or iface name
+# bind_addresses = ["192.168.1.100"]    # List for round-robin binding (family must match target)
 
 # [[upstreams]]
 # type = "socks5"
