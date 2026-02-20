@@ -474,7 +474,10 @@ match crate::transport::middle_proxy::fetch_proxy_secret(proxy_secret_path).awai
     // Spawns a background task that watches the config file and reloads it
     // on SIGHUP (Unix) or every 60 seconds.  Each accept-loop clones the
     // receiver and calls `.borrow_and_update().clone()` per connection.
-    let (config_rx, mut log_level_rx) = spawn_config_watcher(
+    let (config_rx, mut log_level_rx): (
+        tokio::sync::watch::Receiver<Arc<ProxyConfig>>,
+        tokio::sync::watch::Receiver<LogLevel>,
+    ) = spawn_config_watcher(
         std::path::PathBuf::from(&config_path),
         config.clone(),
         std::time::Duration::from_secs(60),
@@ -771,7 +774,7 @@ match crate::transport::middle_proxy::fetch_proxy_secret(proxy_secret_path).awai
 
         has_unix_listener = true;
 
-        let mut config_rx_unix = config_rx.clone();
+        let mut config_rx_unix: tokio::sync::watch::Receiver<Arc<ProxyConfig>> = config_rx.clone();
         let stats = stats.clone();
         let upstream_manager = upstream_manager.clone();
         let replay_checker = replay_checker.clone();
@@ -862,7 +865,7 @@ match crate::transport::middle_proxy::fetch_proxy_secret(proxy_secret_path).awai
     }
 
     for listener in listeners {
-        let mut config_rx = config_rx.clone();
+        let mut config_rx: tokio::sync::watch::Receiver<Arc<ProxyConfig>> = config_rx.clone();
         let stats = stats.clone();
         let upstream_manager = upstream_manager.clone();
         let replay_checker = replay_checker.clone();
