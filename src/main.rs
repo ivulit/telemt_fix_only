@@ -891,7 +891,7 @@ match crate::transport::middle_proxy::fetch_proxy_secret(proxy_secret_path).awai
         });
     }
 
-    for listener in listeners {
+    for (listener, listener_proxy_protocol) in listeners {
         let mut config_rx: tokio::sync::watch::Receiver<Arc<ProxyConfig>> = config_rx.clone();
         let stats = stats.clone();
         let upstream_manager = upstream_manager.clone();
