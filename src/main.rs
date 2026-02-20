@@ -129,12 +129,22 @@ fn print_proxy_links(host: &str, port: u16, config: &ProxyConfig) {
                 );
             }
             if config.general.modes.tls {
-                let domain_hex = hex::encode(&config.censorship.tls_domain);
-                info!(
-                    target: "telemt::links",
-                    "  EE-TLS:  tg://proxy?server={}&port={}&secret=ee{}{}",
-                    host, port, secret, domain_hex
-                );
+                let mut domains = Vec::with_capacity(1 + config.censorship.tls_domains.len());
+                domains.push(config.censorship.tls_domain.clone());
+                for d in &config.censorship.tls_domains {
+                    if !domains.contains(d) {
+                        domains.push(d.clone());
+                    }
+                }
+
+                for domain in domains {
+                    let domain_hex = hex::encode(&domain);
+                    info!(
+                        target: "telemt::links",
+                        "  EE-TLS:  tg://proxy?server={}&port={}&secret=ee{}{}",
+                        host, port, secret, domain_hex
+                    );
+                }
             }
         } else {
             warn!(target: "telemt::links", "User '{}' in show_link not found", user_name);
