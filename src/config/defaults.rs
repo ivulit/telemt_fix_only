@@ -143,10 +143,18 @@ pub(crate) fn default_alpn_enforce() -> bool {
 
 pub(crate) fn default_stun_servers() -> Vec<String> {
     vec![
+        "stun.l.google.com:5349".to_string(),
+        "stun1.l.google.com:3478".to_string(),
+        "stun.gmx.net:3478".to_string(),
         "stun.l.google.com:19302".to_string(),
+        "stun.1und1.de:3478".to_string(),
         "stun1.l.google.com:19302".to_string(),
         "stun2.l.google.com:19302".to_string(),
+        "stun3.l.google.com:19302".to_string(),
+        "stun4.l.google.com:19302".to_string(),
+        "stun.services.mozilla.com:3478".to_string(),
         "stun.stunprotocol.org:3478".to_string(),
+        "stun.nextcloud.com:3478".to_string(),
         "stun.voip.eutelia.it:3478".to_string(),
     ]
 }
@@ -163,15 +171,15 @@ pub(crate) fn default_cache_public_ip_path() -> String {
 }
 
 pub(crate) fn default_proxy_secret_reload_secs() -> u64 {
-    2 * 60 * 60
+    1 * 60 * 60
 }
 
 pub(crate) fn default_proxy_config_reload_secs() -> u64 {
-    2 * 60 * 60
+    1 * 60 * 60
 }
 
 pub(crate) fn default_update_every_secs() -> u64 {
-    12 * 60 * 60
+    1 * 30 * 60
 }
 
 pub(crate) fn default_me_reinit_drain_timeout_secs() -> u64 {
