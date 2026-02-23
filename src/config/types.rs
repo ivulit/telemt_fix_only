@@ -474,6 +474,12 @@ pub struct AntiCensorshipConfig {
     #[serde(default = "default_tls_new_session_tickets")]
     pub tls_new_session_tickets: u8,
 
+    /// TTL in seconds for sending full certificate payload per client IP.
+    /// First client connection per (SNI domain, client IP) gets full cert payload.
+    /// Subsequent handshakes within TTL use compact cert metadata payload.
+    #[serde(default = "default_tls_full_cert_ttl_secs")]
+    pub tls_full_cert_ttl_secs: u64,
+
     /// Enforce ALPN echo of client preference.
     #[serde(default = "default_alpn_enforce")]
     pub alpn_enforce: bool,
@@ -494,6 +500,7 @@ impl Default for AntiCensorshipConfig {
             server_hello_delay_min_ms: default_server_hello_delay_min_ms(),
             server_hello_delay_max_ms: default_server_hello_delay_max_ms(),
             tls_new_session_tickets: default_tls_new_session_tickets(),
+            tls_full_cert_ttl_secs: default_tls_full_cert_ttl_secs(),
             alpn_enforce: default_alpn_enforce(),
         }
     }

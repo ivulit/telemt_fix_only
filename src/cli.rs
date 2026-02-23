@@ -229,6 +229,7 @@ tls_domain = "{domain}"
 mask = true
 mask_port = 443
 fake_cert_len = 2048
+tls_full_cert_ttl_secs = 90
 
 [access]
 replay_check_len = 65536
