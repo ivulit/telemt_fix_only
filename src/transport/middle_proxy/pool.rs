@@ -452,7 +452,7 @@ impl MePool {
         };
         self.writers.write().await.push(writer.clone());
         self.conn_count.fetch_add(1, Ordering::Relaxed);
-        self.writer_available.notify_waiters();
+        self.writer_available.notify_one();
 
         let reg = self.registry.clone();
         let writers_arc = self.writers_arc();
