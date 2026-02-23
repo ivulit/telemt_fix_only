@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, Duration};
@@ -14,6 +14,7 @@ use crate::tls_front::types::{CachedTlsData, ParsedServerHello, TlsFetchResult};
 pub struct TlsFrontCache {
     memory: RwLock<HashMap<String, Arc<CachedTlsData>>>,
     default: Arc<CachedTlsData>,
+    full_cert_sent: RwLock<HashSet<String>>,
     disk_path: PathBuf,
 }
 
@@ -46,6 +47,7 @@ impl TlsFrontCache {
         Self {
             memory: RwLock::new(map),
             default,
+            full_cert_sent: RwLock::new(HashSet::new()),
             disk_path: disk_path.as_ref().to_path_buf(),
         }
     }
@@ -53,6 +55,15 @@ impl TlsFrontCache {
     pub async fn get(&self, sni: &str) -> Arc<CachedTlsData> {
         let guard = self.memory.read().await;
         guard.get(sni).cloned().unwrap_or_else(|| self.default.clone())
+    }
+
+    pub async fn contains_domain(&self, domain: &str) -> bool {
+        self.memory.read().await.contains_key(domain)
+    }
+
+    /// Returns true only on first request for a domain after process start.
+    pub async fn take_full_cert_budget(&self, domain: &str) -> bool {
+        self.full_cert_sent.write().await.insert(domain.to_string())
     }
 
     pub async fn set(&self, domain: &str, data: CachedTlsData) {
