@@ -1200,15 +1200,23 @@ impl MePool {
         }
         addrs.shuffle(&mut rand::rng());
         if addrs.len() > 1 {
+            let concurrency = 2usize;
             let mut join = tokio::task::JoinSet::new();
-            for (ip, port) in addrs {
-                let addr = SocketAddr::new(ip, port);
-                let pool = Arc::clone(&self);
-                let rng_clone = Arc::clone(&rng);
-                join.spawn(async move { (addr, pool.connect_one(addr, rng_clone.as_ref()).await) });
-            }
+            let mut next_idx = 0usize;
 
-            while let Some(res) = join.join_next().await {
+            while next_idx < addrs.len() || !join.is_empty() {
+                while next_idx < addrs.len() && join.len() < concurrency {
+                    let (ip, port) = addrs[next_idx];
+                    next_idx += 1;
+                    let addr = SocketAddr::new(ip, port);
+                    let pool = Arc::clone(&self);
+                    let rng_clone = Arc::clone(&rng);
+                    join.spawn(async move { (addr, pool.connect_one(addr, rng_clone.as_ref()).await) });
+                }
+
+                let Some(res) = join.join_next().await else {
+                    break;
+                };
                 match res {
                     Ok((addr, Ok(()))) => {
                         info!(%addr, dc = %dc, "ME connected");

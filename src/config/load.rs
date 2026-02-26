@@ -131,6 +131,9 @@ impl ProxyConfig {
         let general_table = parsed_toml
             .get("general")
             .and_then(|value| value.as_table());
+        let network_table = parsed_toml
+            .get("network")
+            .and_then(|value| value.as_table());
         let update_every_is_explicit = general_table
             .map(|table| table.contains_key("update_every"))
             .unwrap_or(false);
@@ -139,6 +142,9 @@ impl ProxyConfig {
             .unwrap_or(false);
         let legacy_config_is_explicit = general_table
             .map(|table| table.contains_key("proxy_config_auto_reload_secs"))
+            .unwrap_or(false);
+        let stun_servers_is_explicit = network_table
+            .map(|table| table.contains_key("stun_servers"))
             .unwrap_or(false);
 
         let mut config: ProxyConfig =
@@ -151,25 +157,31 @@ impl ProxyConfig {
         let legacy_nat_stun = config.general.middle_proxy_nat_stun.take();
         let legacy_nat_stun_servers = std::mem::take(&mut config.general.middle_proxy_nat_stun_servers);
         let legacy_nat_stun_used = legacy_nat_stun.is_some() || !legacy_nat_stun_servers.is_empty();
+        if stun_servers_is_explicit {
+            let mut explicit_stun_servers = Vec::new();
+            for stun in std::mem::take(&mut config.network.stun_servers) {
+                push_unique_nonempty(&mut explicit_stun_servers, stun);
+            }
+            config.network.stun_servers = explicit_stun_servers;
 
-        let mut unified_stun_servers = Vec::new();
-        for stun in std::mem::take(&mut config.network.stun_servers) {
-            push_unique_nonempty(&mut unified_stun_servers, stun);
-        }
-        if let Some(stun) = legacy_nat_stun {
-            push_unique_nonempty(&mut unified_stun_servers, stun);
-        }
-        for stun in legacy_nat_stun_servers {
-            push_unique_nonempty(&mut unified_stun_servers, stun);
-        }
+            if legacy_nat_stun_used {
+                warn!("general.middle_proxy_nat_stun and general.middle_proxy_nat_stun_servers are ignored because network.stun_servers is explicitly set");
+            }
+        } else {
+            // Keep the default STUN pool unless network.stun_servers is explicitly overridden.
+            let mut unified_stun_servers = default_stun_servers();
+            if let Some(stun) = legacy_nat_stun {
+                push_unique_nonempty(&mut unified_stun_servers, stun);
+            }
+            for stun in legacy_nat_stun_servers {
+                push_unique_nonempty(&mut unified_stun_servers, stun);
+            }
 
-        if unified_stun_servers.is_empty() {
-            unified_stun_servers = default_stun_servers();
-        }
-        config.network.stun_servers = unified_stun_servers;
+            config.network.stun_servers = unified_stun_servers;
 
-        if legacy_nat_stun_used {
-            warn!("general.middle_proxy_nat_stun and general.middle_proxy_nat_stun_servers are deprecated; use network.stun_servers");
+            if legacy_nat_stun_used {
+                warn!("general.middle_proxy_nat_stun and general.middle_proxy_nat_stun_servers are deprecated; use network.stun_servers");
+            }
         }
 
         if let Some(update_every) = config.general.update_every {
