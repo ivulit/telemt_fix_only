@@ -392,26 +392,33 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 );
 
                 let pool_size = config.general.middle_proxy_pool_size.max(1);
-                match pool.init(pool_size, &rng).await {
-                    Ok(()) => {
-                        info!("Middle-End pool initialized successfully");
+                loop {
+                    match pool.init(pool_size, &rng).await {
+                        Ok(()) => {
+                            info!("Middle-End pool initialized successfully");
 
-                        // Phase 4: Start health monitor
-                        let pool_clone = pool.clone();
-                        let rng_clone = rng.clone();
-                        let min_conns = pool_size;
-                        tokio::spawn(async move {
-                            crate::transport::middle_proxy::me_health_monitor(
-                                pool_clone, rng_clone, min_conns,
-                            )
-                            .await;
-                        });
+                            // Phase 4: Start health monitor
+                            let pool_clone = pool.clone();
+                            let rng_clone = rng.clone();
+                            let min_conns = pool_size;
+                            tokio::spawn(async move {
+                                crate::transport::middle_proxy::me_health_monitor(
+                                    pool_clone, rng_clone, min_conns,
+                                )
+                                .await;
+                            });
 
-                        Some(pool)
-                    }
-                    Err(e) => {
-                        error!(error = %e, "Failed to initialize ME pool. Falling back to direct mode.");
-                        None
+                            break Some(pool);
+                        }
+                        Err(e) => {
+                            warn!(
+                                error = %e,
+                                retry_in_secs = 2,
+                                "ME pool is not ready yet; retrying startup initialization"
+                            );
+                            pool.reset_stun_state();
+                            tokio::time::sleep(Duration::from_secs(2)).await;
+                        }
                     }
                 }
             }
