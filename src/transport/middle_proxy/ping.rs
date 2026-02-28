@@ -101,16 +101,26 @@ fn route_from_egress(egress: Option<UpstreamEgressInfo>) -> Option<String> {
             parts.push(format!("src={ip}"));
             Some(format!("direct {}", parts.join(" ")))
         }
-        UpstreamRouteKind::Socks4 => Some(
-            info.socks_bound_addr
-                .map(|addr| format!("socks4 bnd={addr}"))
-                .unwrap_or_else(|| "socks4".to_string()),
-        ),
-        UpstreamRouteKind::Socks5 => Some(
-            info.socks_bound_addr
-                .map(|addr| format!("socks5 bnd={addr}"))
-                .unwrap_or_else(|| "socks5".to_string()),
-        ),
+        UpstreamRouteKind::Socks4 => {
+            let route = info
+                .socks_proxy_addr
+                .map(|addr| format!("socks4://{addr}"))
+                .unwrap_or_else(|| "socks4://unknown".to_string());
+            Some(match info.socks_bound_addr {
+                Some(bound) => format!("{route} bnd={bound}"),
+                None => route,
+            })
+        }
+        UpstreamRouteKind::Socks5 => {
+            let route = info
+                .socks_proxy_addr
+                .map(|addr| format!("socks5://{addr}"))
+                .unwrap_or_else(|| "socks5://unknown".to_string());
+            Some(match info.socks_bound_addr {
+                Some(bound) => format!("{route} bnd={bound}"),
+                None => route,
+            })
+        }
     }
 }
 

@@ -164,6 +164,7 @@ pub struct UpstreamEgressInfo {
     pub local_addr: Option<SocketAddr>,
     pub direct_bind_ip: Option<IpAddr>,
     pub socks_bound_addr: Option<SocketAddr>,
+    pub socks_proxy_addr: Option<SocketAddr>,
 }
 
 // ============= Upstream Manager =============
@@ -523,6 +524,7 @@ impl UpstreamManager {
                         local_addr,
                         direct_bind_ip: bind_ip,
                         socks_bound_addr: None,
+                        socks_proxy_addr: None,
                     },
                 ))
             },
@@ -593,6 +595,7 @@ impl UpstreamManager {
                     }
                 };
                 let local_addr = stream.local_addr().ok();
+                let socks_proxy_addr = stream.peer_addr().ok();
                 Ok((
                     stream,
                     UpstreamEgressInfo {
@@ -600,6 +603,7 @@ impl UpstreamManager {
                         local_addr,
                         direct_bind_ip: None,
                         socks_bound_addr: Some(bound.addr),
+                        socks_proxy_addr,
                     },
                 ))
             },
@@ -672,6 +676,7 @@ impl UpstreamManager {
                     }
                 };
                 let local_addr = stream.local_addr().ok();
+                let socks_proxy_addr = stream.peer_addr().ok();
                 Ok((
                     stream,
                     UpstreamEgressInfo {
@@ -679,6 +684,7 @@ impl UpstreamManager {
                         local_addr,
                         direct_bind_ip: None,
                         socks_bound_addr: Some(bound.addr),
+                        socks_proxy_addr,
                     },
                 ))
             },
