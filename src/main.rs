@@ -261,7 +261,12 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         warn!("Using default tls_domain. Consider setting a custom domain.");
     }
 
-    let upstream_manager = Arc::new(UpstreamManager::new(config.upstreams.clone()));
+    let upstream_manager = Arc::new(UpstreamManager::new(
+        config.upstreams.clone(),
+        config.general.upstream_connect_retry_attempts,
+        config.general.upstream_connect_retry_backoff_ms,
+        config.general.upstream_unhealthy_fail_threshold,
+    ));
 
     let mut tls_domains = Vec::with_capacity(1 + config.censorship.tls_domains.len());
     tls_domains.push(config.censorship.tls_domain.clone());

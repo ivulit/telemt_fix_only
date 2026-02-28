@@ -237,6 +237,18 @@ impl ProxyConfig {
             ));
         }
 
+        if config.general.upstream_connect_retry_attempts == 0 {
+            return Err(ProxyError::Config(
+                "general.upstream_connect_retry_attempts must be > 0".to_string(),
+            ));
+        }
+
+        if config.general.upstream_unhealthy_fail_threshold == 0 {
+            return Err(ProxyError::Config(
+                "general.upstream_unhealthy_fail_threshold must be > 0".to_string(),
+            ));
+        }
+
         if config.general.me_reinit_every_secs == 0 {
             return Err(ProxyError::Config(
                 "general.me_reinit_every_secs must be > 0".to_string(),
@@ -567,6 +579,18 @@ mod tests {
             cfg.general.me_reconnect_fast_retry_count,
             default_me_reconnect_fast_retry_count()
         );
+        assert_eq!(
+            cfg.general.upstream_connect_retry_attempts,
+            default_upstream_connect_retry_attempts()
+        );
+        assert_eq!(
+            cfg.general.upstream_connect_retry_backoff_ms,
+            default_upstream_connect_retry_backoff_ms()
+        );
+        assert_eq!(
+            cfg.general.upstream_unhealthy_fail_threshold,
+            default_upstream_unhealthy_fail_threshold()
+        );
         assert_eq!(cfg.general.update_every, default_update_every());
         assert_eq!(cfg.server.listen_addr_ipv4, default_listen_addr_ipv4());
         assert_eq!(cfg.server.listen_addr_ipv6, default_listen_addr_ipv6_opt());
@@ -592,6 +616,18 @@ mod tests {
         assert_eq!(
             general.me_reconnect_fast_retry_count,
             default_me_reconnect_fast_retry_count()
+        );
+        assert_eq!(
+            general.upstream_connect_retry_attempts,
+            default_upstream_connect_retry_attempts()
+        );
+        assert_eq!(
+            general.upstream_connect_retry_backoff_ms,
+            default_upstream_connect_retry_backoff_ms()
+        );
+        assert_eq!(
+            general.upstream_unhealthy_fail_threshold,
+            default_upstream_unhealthy_fail_threshold()
         );
         assert_eq!(general.update_every, default_update_every());
 
@@ -762,6 +798,46 @@ mod tests {
         std::fs::write(&path, toml).unwrap();
         let err = ProxyConfig::load(&path).unwrap_err().to_string();
         assert!(err.contains("general.me_reinit_every_secs must be > 0"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn upstream_connect_retry_attempts_zero_is_rejected() {
+        let toml = r#"
+            [general]
+            upstream_connect_retry_attempts = 0
+
+            [censorship]
+            tls_domain = "example.com"
+
+            [access.users]
+            user = "00000000000000000000000000000000"
+        "#;
+        let dir = std::env::temp_dir();
+        let path = dir.join("telemt_upstream_connect_retry_attempts_zero_test.toml");
+        std::fs::write(&path, toml).unwrap();
+        let err = ProxyConfig::load(&path).unwrap_err().to_string();
+        assert!(err.contains("general.upstream_connect_retry_attempts must be > 0"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn upstream_unhealthy_fail_threshold_zero_is_rejected() {
+        let toml = r#"
+            [general]
+            upstream_unhealthy_fail_threshold = 0
+
+            [censorship]
+            tls_domain = "example.com"
+
+            [access.users]
+            user = "00000000000000000000000000000000"
+        "#;
+        let dir = std::env::temp_dir();
+        let path = dir.join("telemt_upstream_unhealthy_fail_threshold_zero_test.toml");
+        std::fs::write(&path, toml).unwrap();
+        let err = ProxyConfig::load(&path).unwrap_err().to_string();
+        assert!(err.contains("general.upstream_unhealthy_fail_threshold must be > 0"));
         let _ = std::fs::remove_file(path);
     }
 

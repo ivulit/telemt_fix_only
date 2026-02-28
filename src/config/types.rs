@@ -365,6 +365,18 @@ pub struct GeneralConfig {
     #[serde(default = "default_me_reconnect_fast_retry_count")]
     pub me_reconnect_fast_retry_count: u32,
 
+    /// Connect attempts for the selected upstream before returning error/fallback.
+    #[serde(default = "default_upstream_connect_retry_attempts")]
+    pub upstream_connect_retry_attempts: u32,
+
+    /// Delay in milliseconds between upstream connect attempts.
+    #[serde(default = "default_upstream_connect_retry_backoff_ms")]
+    pub upstream_connect_retry_backoff_ms: u64,
+
+    /// Consecutive failed requests before upstream is marked unhealthy.
+    #[serde(default = "default_upstream_unhealthy_fail_threshold")]
+    pub upstream_unhealthy_fail_threshold: u32,
+
     /// Ignore STUN/interface IP mismatch (keep using Middle Proxy even if NAT detected).
     #[serde(default)]
     pub stun_iface_mismatch_ignore: bool,
@@ -522,6 +534,9 @@ impl Default for GeneralConfig {
             me_reconnect_backoff_base_ms: default_reconnect_backoff_base_ms(),
             me_reconnect_backoff_cap_ms: default_reconnect_backoff_cap_ms(),
             me_reconnect_fast_retry_count: default_me_reconnect_fast_retry_count(),
+            upstream_connect_retry_attempts: default_upstream_connect_retry_attempts(),
+            upstream_connect_retry_backoff_ms: default_upstream_connect_retry_backoff_ms(),
+            upstream_unhealthy_fail_threshold: default_upstream_unhealthy_fail_threshold(),
             stun_iface_mismatch_ignore: false,
             unknown_dc_log_path: default_unknown_dc_log_path(),
             log_level: LogLevel::Normal,

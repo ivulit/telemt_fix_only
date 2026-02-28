@@ -117,6 +117,14 @@ fn warn_non_hot_changes(old: &ProxyConfig, new: &ProxyConfig) {
     if old.general.stun_nat_probe_concurrency != new.general.stun_nat_probe_concurrency {
         warn!("config reload: general.stun_nat_probe_concurrency changed; restart required");
     }
+    if old.general.upstream_connect_retry_attempts != new.general.upstream_connect_retry_attempts
+        || old.general.upstream_connect_retry_backoff_ms
+            != new.general.upstream_connect_retry_backoff_ms
+        || old.general.upstream_unhealthy_fail_threshold
+            != new.general.upstream_unhealthy_fail_threshold
+    {
+        warn!("config reload: general.upstream_* changed; restart required");
+    }
 }
 
 /// Resolve the public host for link generation — mirrors the logic in main.rs.
